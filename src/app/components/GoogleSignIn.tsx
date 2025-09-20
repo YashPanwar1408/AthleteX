@@ -46,7 +46,7 @@ export default function GoogleSignIn() {
             if (session?.currentTask) {
               // Check for tasks and navigate to custom UI to help users resolve them
               // See https://clerk.com/docs/custom-flows/overview#session-tasks
-              console.log(session?.currentTask)
+             
               return
             }
 

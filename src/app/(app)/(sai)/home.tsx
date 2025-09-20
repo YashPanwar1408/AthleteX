@@ -6,11 +6,6 @@ import { router } from 'expo-router';
 export default function SAIHome() {
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
-      <View className="py-6 px-4 bg-white shadow-sm">
-        <Text className="text-2xl font-bold text-center text-gray-800">SAI Home</Text>
-        <Text className="text-center text-gray-600 mt-2">Choose where to go</Text>
-      </View>
-
       <View className="flex-1 p-4 gap-4">
         <TouchableOpacity
           className="bg-white rounded-2xl shadow-lg overflow-hidden h-32"

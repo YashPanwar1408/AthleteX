@@ -20,7 +20,7 @@ export default function Exercises() {
 
 const fetchExercises = async ()=>{
   try{
-    //fetch exercises from sanity
+
     const exercises = await client.fetch(exercisesQuery);
     setExercises(exercises);
     setFilteredExercises(exercises);
