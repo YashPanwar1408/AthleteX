@@ -13,6 +13,43 @@
  */
 
 // Source: schema.json
+
+export type OfficialsProfile = {
+  _id?: string; 
+  _type: "SAIOfficial";
+  name: string;
+  city: string;
+  organization: string; 
+  officialId: string;
+  createdAt?: string;
+};
+export type AthleteProfile = {
+  _id?: string; 
+  _type: "athlete";
+  name: string;
+  age: number;
+  gender: "male" | "female" | "other";
+  sport: string;
+  height: number; 
+  weight: number;
+  city: string;
+  contact: string; 
+  createdAt?: string;
+};
+
+
+export interface TestAttempt {
+  _id: string;
+  _type: "testAttempt";
+  testType: string;
+  userId: string;
+  videoUrl: string; 
+  status: "in-progress" | "done" | "failed";
+  result?: string;
+  createdAt: string;
+}
+
+
 export type Workout = {
   _id: string;
   _type: "workout";

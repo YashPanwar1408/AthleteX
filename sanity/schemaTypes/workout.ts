@@ -142,7 +142,7 @@ export const workout = defineType({
       name: 'name',
     },
     prepare(selection) {
-      const { userId, date, duration, exerciseCount, name } = selection
+      const { date, duration, exerciseCount, name } = selection
       const workoutDate = date ? new Date(date).toLocaleDateString() : 'No date'
       const durationMinutes = duration ? Math.round(duration / 60) : 0
       const actualExerciseCount = exerciseCount || 0 // Ensure exerciseCount is a number, default to 0

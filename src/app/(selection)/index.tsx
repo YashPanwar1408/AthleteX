@@ -12,7 +12,7 @@ export default function SelectionScreen() {
         if (userType === 'athlete') {
           const done = await AsyncStorage.getItem('@athlete_onboarded');
           if (done === 'true') {
-            router.replace('/(app)/(athlete)/dashboard');
+            router.replace('/(app)/(athlete)/(tabs)/TESTS');
             return;
           }
         }
@@ -24,7 +24,7 @@ export default function SelectionScreen() {
           }
         }
       } catch (e) {
-        // noop
+      
       }
     };
     checkOnboarding();

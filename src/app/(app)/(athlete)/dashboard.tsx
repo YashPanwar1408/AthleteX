@@ -44,7 +44,7 @@ export default function AthleteDashboard() {
 
         <TouchableOpacity
           className="bg-white rounded-2xl shadow-lg overflow-hidden h-32"
-          onPress={() => router.push('/(app)/(athlete)/assessment')}
+          onPress={() => router.push('/(app)/(athlete)/(tabs)/TESTS')}
         >
           <View className="flex-row h-full">
             <View className="w-2/3 p-4 justify-center">

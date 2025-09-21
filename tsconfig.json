@@ -13,5 +13,5 @@
     "**/*.ts",
     "**/*.tsx",
     "nativewind-env.d.ts"
-  ]
+, "src/lib/supabase/uploadVideo.js"  ]
 }

@@ -7,7 +7,7 @@ export default function SAILayout() {
     const router = useRouter();
 
     const handleBackToSelection = async () => {
-        // Clear the user type selection
+       
         await AsyncStorage.removeItem('@user_type');
         router.replace('/(selection)');
     };
@@ -15,7 +15,7 @@ export default function SAILayout() {
     return (
         <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen 
-                name="dashboard" 
+                name="home" 
                 options={{ 
                     headerShown: true,
                     headerTitle: "SAI Dashboard",
