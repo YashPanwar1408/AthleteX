@@ -33,7 +33,8 @@ export type AthleteProfile = {
   height: number; 
   weight: number;
   city: string;
-  contact: string; 
+  contact: string;
+  clerkId?: string;
   createdAt?: string;
 };
 
@@ -46,6 +47,10 @@ export interface TestAttempt {
   videoUrl: string; 
   status: "in-progress" | "done" | "failed";
   result?: string;
+  score?: number;
+  remarks?: string;
+  assessedBy?: string;
+  assessedAt?: string;
   createdAt: string;
 }
 

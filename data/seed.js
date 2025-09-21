@@ -2,6 +2,7 @@ import { adminClient } from "../src/lib/sanity/client.ts";
 
 const officials = [
   { _type: "SAIOfficial", _id: "SAI-1001-AB12", officialId: "SAI-1001-AB12", name: "Ramesh Kumar", city: "Delhi", organization: "SAI Regional Center" },
+  { _type: "SAIOfficial", _id: "SAI-1001-AB12", officialId: "SAI-1000-YP14", name: "Yash Panwar", city: "Delhi", organization: "SAI Regional Center" },
   { _type: "SAIOfficial", _id: "SAI-1002-CD34", officialId: "SAI-1002-CD34", name: "Priya Singh", city: "Mumbai", organization: "SAI HQ" },
   { _type: "SAIOfficial", _id: "SAI-1003-EF56", officialId: "SAI-1003-EF56", name: "Anita Verma", city: "Bengaluru", organization: "SAI Training Center" },
   { _type: "SAIOfficial", _id: "SAI-1004-GH78", officialId: "SAI-1004-GH78", name: "Suresh Patel", city: "Ahmedabad", organization: "SAI Regional Center" },
