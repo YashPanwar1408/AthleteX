@@ -7,35 +7,41 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
-import { client } from "../../../lib/sanity/client";
+import { supabase } from "../../../lib/supabase/supbaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, Stack } from "expo-router";
-import { useAuth, useUser } from "@clerk/clerk-expo"; // 👈 import useUser
+import { useAuth, useUser } from "@clerk/clerk-expo";
 
 export default function Attempts() {
   const [attempts, setAttempts] = useState([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const { userId } = useAuth();
-  const { user } = useUser(); // 👈 get Clerk user
+  const { user } = useUser();
 
   useEffect(() => {
     const fetchAttempts = async () => {
       try {
         if (!userId) return;
-        const data = await client.fetch(
-          `*[_type == "testAttempt" && userId == $userId]{
-             _id,
-             testType,
-             status,
-             videoUrl,
-             createdAt
-           } | order(createdAt desc)`,
-          { userId }
-        );
-        setAttempts(data);
+        const { data, error } = await supabase
+          .from("attempts")
+          .select("id, test_type, status, video_url, created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        const mappedAttempts = data.map((attempt) => ({
+          _id: attempt.id,
+          testType: attempt.test_type,
+          status: attempt.status,
+          videoUrl: attempt.video_url,
+          createdAt: attempt.created_at,
+        }));
+
+        setAttempts(mappedAttempts);
       } catch (err) {
-        console.error("Error fetching attempts:", err);
+        console.error("Error fetching attempts from Supabase:", err);
       } finally {
         setLoading(false);
       }
@@ -56,6 +62,12 @@ export default function Attempts() {
     }
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return "-";
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? "-" : date.toLocaleDateString();
+  };
+
   return (
     <>
       <Stack.Screen
@@ -72,31 +84,39 @@ export default function Attempts() {
           attempts.map((attempt) => (
             <TouchableOpacity
               key={attempt._id}
-              style={styles.card}
+              style={[
+                styles.card,
+                attempt.status === "in-progress" && { opacity: 0.6 }, // visually indicate disabled
+              ]}
               onPress={() =>
+                attempt.status !== "in-progress" &&
                 router.push(`/(app)/(athlete)/attempts/${attempt._id}`)
               }
+              disabled={attempt.status === "in-progress"} // disable when in progress
             >
               <Ionicons name="fitness-outline" size={28} color="#007AFF" />
               <View style={{ marginLeft: 10 }}>
                 <Text style={styles.testName}>{attempt.testType}</Text>
-
-                {/* 👇 Show Clerk user name here */}
                 <Text style={styles.athleteName}>
                   Athlete: {user?.fullName || user?.firstName || "Unknown"}
                 </Text>
-
-                <Text style={styles.status}>
+                <Text
+                  style={[
+                    styles.status,
+                    getStatusStyle(attempt.status),
+                  ]}
+                >
                   Status:{" "}
                   {attempt.status === "in-progress"
                     ? "⏳ In Progress"
                     : attempt.status === "done"
                     ? "✅ Done"
-                    : "❌ Failed"}
+                    : attempt.status === "failed"
+                    ? "❌ Failed"
+                    : attempt.status}
                 </Text>
-
                 <Text style={styles.date}>
-                  {new Date(attempt.createdAt).toLocaleDateString()}
+                  {formatDate(attempt.createdAt)}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -131,7 +151,15 @@ const styles = StyleSheet.create({
   },
   testName: { fontSize: 18, fontWeight: "600", color: "#1E293B" },
   athleteName: { fontSize: 14, fontWeight: "500", color: "#007AFF" },
-  status: { fontSize: 14, color: "#555", marginTop: 4 },
+  status: {
+    fontSize: 14,
+    color: "#555",
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+  },
   date: { fontSize: 12, color: "#999", marginTop: 2 },
   emptyText: {
     textAlign: "center",

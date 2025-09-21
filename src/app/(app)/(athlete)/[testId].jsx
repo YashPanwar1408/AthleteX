@@ -5,14 +5,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { uploadVideo } from "../../../lib/supabase/uploadVideo";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useUser } from "@clerk/clerk-expo";
 import { client } from "../../../lib/sanity/client";
+import {supabase} from "../../../lib/supabase/supbaseClient"
 import VerticalJumpVideo from "../../assets/VerticalJump.mp4";
 import SitUpsVideo from "../../assets/SitUps.mp4";
 import ShuttleRunVideo from "../../assets/ShuttleRun.mp4";
@@ -147,7 +149,7 @@ export default function TestScreen() {
   const router = useRouter();
   const [level, setLevel] = useState("beginner");
   const [uploading, setUploading] = useState(false);
- const [selectedVideoUri, setSelectedVideoUri] = useState(null);
+  const [selectedVideoUri, setSelectedVideoUri] = useState(null);
   const { user } = useUser();
 
   const test = testsData[testId];
@@ -161,15 +163,54 @@ export default function TestScreen() {
 
   const currentLevel = test.levels[level];
 
-  const pickVideo = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "video/*",
-      });
+  const handleAddVideo = () => {
+    Alert.alert(
+      "Add Video",
+      "How would you like to add your video?",
+      [
+        { text: "Record a New Video", onPress: recordVideo },
+        { text: "Choose from Library", onPress: pickVideoFromLibrary },
+        { text: "Cancel", style: "cancel" },
+      ],
+      { cancelable: true }
+    );
+  };
 
-      if (result.canceled) return;
-      const file = result.assets[0];
-      setSelectedVideoUri(file.uri);
+  const recordVideo = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      alert("Sorry, we need camera permissions!");
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        quality: 1,
+        allowsEditing: true,
+      });
+      if (!result.canceled) {
+        setSelectedVideoUri(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error("Video recording failed:", err);
+    }
+  };
+
+  const pickVideoFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      alert("Sorry, we need camera roll permissions!");
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        quality: 1,
+        allowsEditing: true,
+      });
+      if (!result.canceled) {
+        setSelectedVideoUri(result.assets[0].uri);
+      }
     } catch (err) {
       console.error("Video picking failed:", err);
     }
@@ -180,34 +221,85 @@ export default function TestScreen() {
       alert("Please select a video first.");
       return;
     }
-
     setUploading(true);
+    let sanityDocId = null;
+
     try {
-      const res = await uploadVideo(selectedVideoUri, testId, user);
-    const testKey = Array.isArray(testId) ? testId[0] : testId;
-const currentTest = testsData[testKey];
-
-
-       const profile={
-             _type: "testAttempt",
-              testType: currentTest.title ,
-              userId: user.id,
-              videoUrl: res.videoUrl,
-              status: "in-progress",
-              createdAt: new Date().toISOString(),
-       }
-      if (res.success) {
-       
-         const created=await client.create(profile);
-       
-         setSelectedVideoUri(null);
-        router.push("/(app)/(athlete)/attempts");
-      } else {
-        alert("Upload failed");
+      const uploadRes = await uploadVideo(selectedVideoUri, testId, user);
+      if (!uploadRes.success) {
+        throw new Error("Video upload to Supabase failed.");
       }
+
+      const testKey = Array.isArray(testId) ? testId[0] : testId;
+      const currentTest = testsData[testKey];
+     
+     
+       const getLatestAttemptId = async (userId, testType) => {
+  const { data, error } = await supabase
+    .from("attempts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("test_type", testType)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+  
+  if (error || !data) {
+    throw new Error("Could not fetch attempt ID from Supabase.");
+  }
+  return data.id;
+};
+ const fetchAttemptResult = async (attemptId) => {
+  const { data, error } = await supabase
+    .from("attempts")
+    .select("result, annotated_video")
+    .eq("id", attemptId)
+    .single();
+
+  if (error || !data) {
+    console.error("Could not fetch result from Supabase.",error);
+  }
+  return data;
+};
+const attemptId = await getLatestAttemptId(user.id, testKey);
+ const attemptResult = await fetchAttemptResult(attemptId);
+ const profile = {
+        _type: "testAttempt",
+        testType: currentTest.title,
+        userId: user.id,
+        videoUrl: uploadRes.videoUrl,
+        status: "in-progress",
+        createdAt: new Date().toISOString(),
+        result: attemptResult.result || "Processing",
+        annotatedVideo: attemptResult.annotated_video || null,
+      };
+      
+      const createdDoc = await client.create(profile);
+      sanityDocId = createdDoc._id;
+      
+      Alert.alert("Upload Complete", "Your test is being analyzed. You can check the attempts page for results shortly.");
+      router.push("/(app)/(athlete)/attempts");
+      setSelectedVideoUri(null);
+ 
+ 
+      await fetch("http://192.168.1.33:5001/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: uploadRes.videoUrl,
+          testType: testKey,
+          attemptId: attemptId,
+          userId: user.id,
+          username: user.fullName,
+        }),
+      });
+      
     } catch (err) {
       console.error("Upload error:", err);
       alert("Upload failed, check console for details.");
+      if(sanityDocId){
+        await client.patch(sanityDocId).set({ status: "failed", result: err.message }).commit();
+      }
     } finally {
       setUploading(false);
     }
@@ -232,7 +324,6 @@ const currentTest = testsData[testKey];
       />
 
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Level Selector */}
         <View style={styles.levelTabs}>
           {["beginner", "intermediate", "advanced"].map((lvl) => (
             <TouchableOpacity
@@ -254,7 +345,6 @@ const currentTest = testsData[testKey];
 
         <Text style={styles.description}>{currentLevel.description}</Text>
 
-        {/* Video */}
         <Video
           source={
             typeof test.video === "string" ? { uri: test.video } : test.video
@@ -275,22 +365,22 @@ const currentTest = testsData[testKey];
 
         <TouchableOpacity
           style={styles.uploadButton}
-          onPress={pickVideo}
+          onPress={handleAddVideo}
           disabled={uploading}
         >
-          <Text style={styles.uploadText}> Select Video</Text>
+          <Text style={styles.uploadText}> Select or Record Video</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[
             styles.uploadButton,
-            { backgroundColor: selectedVideoUri ? "#007AFF" : "#ccc" },
+            { backgroundColor: selectedVideoUri ? "#28a745" : "#ccc" },
           ]}
           onPress={handleUploadVideo}
           disabled={uploading || !selectedVideoUri}
         >
           <Text style={styles.uploadText}>
-            {uploading ? " Uploading..." : " Upload Your Test Video"}
+            {uploading ? " Uploading..." : " Upload and Start Analysis"}
           </Text>
         </TouchableOpacity>
       </ScrollView>

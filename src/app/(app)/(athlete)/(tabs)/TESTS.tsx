@@ -30,13 +30,26 @@ export default function SaiTests() {
           <Ionicons name="chevron-forward" size={24} color="#64748B" />
         </TouchableOpacity>
       ))}
+
+      <TouchableOpacity
+        style={styles.attemptsButton}
+        onPress={() => router.push("/(app)/(athlete)/attempts")}
+      >
+        <Ionicons name="time-outline" size={22} color="#fff" />
+        <Text style={styles.attemptsText}> See Your Previous Attempts</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", padding: 16 },
-  heading: { fontSize: 22, fontWeight: "700", marginBottom: 20, color: "#0F172A" },
+  heading: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 20,
+    color: "#0F172A",
+  },
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -50,5 +63,31 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 2,
   },
-  cardTitle: { fontSize: 18, marginLeft: 12, color: "#1E293B", fontWeight: "500" },
+  cardTitle: {
+    fontSize: 18,
+    marginLeft: 12,
+    color: "#1E293B",
+    fontWeight: "500",
+  },
+
+  // 🔹 New button styles
+  attemptsButton: {
+    marginTop: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#007AFF",
+    paddingVertical: 14,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  attemptsText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    marginLeft: 8,
+  },
 });

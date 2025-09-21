@@ -1,0 +1,7 @@
+ultralytics
+opencv-python
+pytest
+Flask
+python-dotenv
+requests
+supabase
