@@ -125,41 +125,33 @@ export const workout = defineType({
       ],
       validation: (Rule) => Rule.required().min(1),
     }),
+    defineField({
+      name: 'name',
+      title: 'Workout Name',
+      type: 'string',
+      description: 'Optional name for the workout',
+    }),
   ],
+
   preview: {
     select: {
       userId: 'userId',
       date: 'date',
       duration: 'duration',
       exerciseCount: 'exercises.length',
+      name: 'name',
     },
     prepare(selection) {
-      const { userId, date, duration, exerciseCount } = selection
+      const { userId, date, duration, exerciseCount, name } = selection
       const workoutDate = date ? new Date(date).toLocaleDateString() : 'No date'
       const durationMinutes = duration ? Math.round(duration / 60) : 0
-      const exerciseText = exerciseCount === 1 ? 'exercise' : 'exercises'
-      
+      const actualExerciseCount = exerciseCount || 0 // Ensure exerciseCount is a number, default to 0
+      const exerciseText = actualExerciseCount === 1 ? 'exercise' : 'exercises'
+
       return {
-        title: `Workout by ${userId}`,
-        subtitle: `${workoutDate} • ${durationMinutes}min • ${exerciseCount} ${exerciseText}`,
+        title: name || `Workout - ${workoutDate}`,
+        subtitle: `${workoutDate} • ${durationMinutes}min${actualExerciseCount > 0 ? ` • ${actualExerciseCount} ${exerciseText}` : ''}`,
       }
     },
   },
-  orderings: [
-    {
-      title: 'Date (Newest)',
-      name: 'dateDesc',
-      by: [{ field: 'date', direction: 'desc' }],
-    },
-    {
-      title: 'Date (Oldest)',
-      name: 'dateAsc',
-      by: [{ field: 'date', direction: 'asc' }],
-    },
-    {
-      title: 'Duration (Longest)',
-      name: 'durationDesc',
-      by: [{ field: 'duration', direction: 'desc' }],
-    },
-  ],
 })

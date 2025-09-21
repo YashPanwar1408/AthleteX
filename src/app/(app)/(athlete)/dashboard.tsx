@@ -2,8 +2,20 @@ import React from 'react';
 import { View, Text, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function AthleteDashboard() {
+  const handleBackToSelection = async () => {
+    try {
+      // Clear the stored user type and onboarding status
+      await AsyncStorage.removeItem('@user_type');
+      await AsyncStorage.removeItem('@athlete_onboarded');
+      router.replace('/(selection)');
+    } catch (error) {
+      console.error('Error clearing user data:', error);
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
       <View className="py-6 px-4 bg-white shadow-sm">
@@ -48,8 +60,16 @@ export default function AthleteDashboard() {
           </View>
         </TouchableOpacity>
       </View>
+      
+      <View className="p-4">
+        <TouchableOpacity 
+          onPress={handleBackToSelection}
+          className="bg-gray-100 border border-gray-300 rounded-xl py-4 flex-row items-center justify-center space-x-2"
+        >
+          <Ionicons name="arrow-back" size={24} color="#4B5563" />
+          <Text className="text-gray-700 font-medium text-lg">Back to Selection</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
-
-

@@ -1,8 +1,12 @@
 import { Tabs } from "expo-router";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import { Image } from "react-native";
+import { useUser } from "@clerk/clerk-expo";
 
 function Layout() {
+
+    const { user } = useUser();
+
     return (
         <Tabs>
             <Tabs.Screen
@@ -53,13 +57,21 @@ function Layout() {
                 options={{
                     title: "Profile",
                     headerShown: false,
-                    // tabBarIcon: ({ color, size }) => (
-                    //     <Image
-                    //         source={user?.imageUrl ?? user?.externalAccounts[0]?.imageUrl}
-                    //         className="rounded-full"
-                    //         style={{ width: 28, height: 28, borderRadius: 100 }}
-                    //     />
-                    // ),
+                    tabBarIcon: ({ color, size }) => {
+                        if (!user) {
+                            return <AntDesign name="user" color={color} size={size} />;
+                        }
+                        
+                        return (
+                            <Image
+                                source={{
+                                    uri: user.imageUrl ?? user.externalAccounts?.[0]?.imageUrl
+                                }}
+                                className="rounded-full"
+                                style={{ width: 28, height: 28, borderRadius: 100 }}
+                            />
+                        );
+                    },
                 }} />
         </Tabs>
     )

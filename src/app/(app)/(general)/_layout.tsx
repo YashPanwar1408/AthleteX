@@ -13,21 +13,20 @@ export default function GeneralLayout() {
     };
 
     return (
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack>
             <Stack.Screen 
                 name="(tabs)" 
+                options={{ 
+                    headerShown: false 
+                }} 
+            />
+            <Stack.Screen 
+                name="exercise-detail" 
                 options={{
-                    headerShown: true,
-                    headerTitle: "General Fitness",
-                    headerLeft: () => (
-                        <TouchableOpacity 
-                            onPress={handleBackToSelection}
-                            className="ml-2 flex-row items-center"
-                        >
-                            <Ionicons name="arrow-back" size={24} color="#007AFF" />
-                        </TouchableOpacity>
-                    ),
-                    gestureEnabled: false
+                    headerShown: false,
+                    presentation: "modal",
+                    gestureEnabled: true,
+                    animationTypeForReplace: "push"
                 }}
             />
         </Stack>

@@ -1,8 +1,8 @@
 import { Text, SafeAreaView, View, TextInput, TouchableOpacity, FlatList, RefreshControl } from 'react-native'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Ionicons from '@expo/vector-icons/build/Ionicons'
-import { router, useRouter } from 'expo-router'
-import {defineQuery} from "groq"
+import { useRouter } from 'expo-router'
+import { defineQuery } from "groq"
 import { client } from '@/lib/sanity/client'
 import { Exercise } from '@/lib/sanity/types'
 import ExerciseCard from '@/app/components/ExerciseCard'
@@ -18,18 +18,27 @@ export default function Exercises() {
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false);
 
-const fetchExercises = async ()=>{
-  try{
-    //fetch exercises from sanity
-    const exercises = await client.fetch(exercisesQuery);
-    setExercises(exercises);
-    setFilteredExercises(exercises);
-  }catch(error){
-    console.error("Error fetching exercises:",error);
+  const fetchExercises = async () => {
+    try {
+      //fetch exercises from sanity
+      const exercises = await client.fetch(exercisesQuery);
+      setExercises(exercises);
+      setFilteredExercises(exercises);
+    } catch (error) {
+      console.error("Error fetching exercises:", error);
+    }
   }
-}
+  useEffect(() => {
+    fetchExercises();
+  }, []);
+  useEffect(() => {
+    const filtered = exercises.filter((exercise: Exercise) =>
+      exercise.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredExercises(filtered);
+  }, [searchQuery, exercises]);
 
-  const onRefresh = async ()=>{
+  const onRefresh = async () => {
     setRefreshing(true);
     await fetchExercises();
     setRefreshing(false);
@@ -41,28 +50,28 @@ const fetchExercises = async ()=>{
         <Text className="text-2xl font-bold text-gray-900">Exercise Library</Text>
         <Text className="text-gray-600 mt-1">Discover and master new exercises</Text>
 
-      {/*Search Bar*/}
-      <View className='flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mt-4'>
-        <Ionicons name='search' size={24} color='#6B7280' />
-        <TextInput placeholder='Search exercises' className='flex-1 ml-3 text-gray-800' placeholderTextColor="#9CA3AF" value={searchQuery} onChangeText={setSearchQuery} />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name='close-circle' size={20} color='#6B7280' />
-          </TouchableOpacity>
-        )}
-      </View>
+        {/*Search Bar*/}
+        <View className='flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mt-4'>
+          <Ionicons name='search' size={24} color='#6B7280' />
+          <TextInput placeholder='Search exercises' className='flex-1 ml-3 text-gray-800' placeholderTextColor="#9CA3AF" value={searchQuery} onChangeText={setSearchQuery} />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name='close-circle' size={20} color='#6B7280' />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       {/*Exercises List*/}
-      <FlatList 
-        data={[]}
+      <FlatList
+        data={filteredExercises}
         keyExtractor={(item) => item._id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 24 }}
         renderItem={({ item }) => (
-          <ExerciseCard item={item} onPress={() => router.push(`/exercise-detail?id=${item._id}`)}/>
+          <ExerciseCard item={item} onPress={() => router.push(`/exercise-detail?id=${item._id}`)} />
         )}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#3B82F6"]} tintColor="#3B82F6" title="Pull to refresh exercises" titleColor="#6B7280"/>
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#3B82F6"]} tintColor="#3B82F6" title="Pull to refresh exercises" titleColor="#6B7280" />
         }
         ListEmptyComponent={
           <View className="bg-white rounded-2xl p-8 items-center">
