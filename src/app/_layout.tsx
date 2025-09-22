@@ -3,8 +3,7 @@ import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import { Slot, useSegments, useRouter } from "expo-router";
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 import { useEffect } from "react";
-import { EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY } from '../../env.js';
-
+import { EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY } from "../../env.js";
 
 function InitialLayout() {
   const { isSignedIn, isLoaded } = useAuth();
