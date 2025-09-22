@@ -301,7 +301,6 @@ export default function PendingTestsPage() {
                 source={{ uri: selectedAttempt.videoUrl }}
                 style={{ flex: 1, width: '100%' }}
                 useNativeControls
-                resizeMode="contain"
               />
             )}
           </View>

@@ -69,26 +69,7 @@ export const testAttempts = defineType({
       type: "datetime",
       initialValue: () => new Date().toISOString(),
     }),
-  ],
-    defineField({
-      name: "status",
-      title: "Status",
-      type: "string",
-      options: {
-        list: ["in-progress", "done", "failed"],
-      },
-      initialValue: "in-progress",
-    }),
-    defineField({
-      name: "result",
-      title: "Result",
-      type: "text",
-    }),
-    defineField({
-      name: "createdAt",
-      title: "Created At",
-      type: "datetime",
-      initialValue: () => new Date().toISOString(),
-    }),
-  ],
-})
+  ]
+});
+    
+   

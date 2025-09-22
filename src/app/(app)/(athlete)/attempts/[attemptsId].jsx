@@ -6,11 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../../lib/supabase/supbaseClient";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 
 const AnalysisReport = ({ result }) => {
   const analysisData = result.analysisData;
@@ -85,7 +88,7 @@ const MetricCard = ({ icon, label, value, unit, color = "#333" }) => (
     <Ionicons name={icon} size={28} color="#007AFF" />
     <Text style={styles.metricLabel}>{label}</Text>
     <Text style={[styles.metricValue, { color }]}>
-      {value} <Text style={styles.metricUnit}>{unit}</Text>
+      {value} {unit && <Text style={styles.metricUnit}>{unit}</Text>}
     </Text>
   </View>
 );
@@ -125,6 +128,61 @@ export default function AttemptDetailScreen() {
     fetchAttemptData();
   }, [attemptsId]);
 
+  const createPdfHtml = (result) => {
+    const analysis = result.analysisData;
+    const jumpsList = analysis.jump_heights_px.map((h, i) => `<li>Jump ${i + 1}: ${h}px</li>`).join('');
+
+    return `
+      <html>
+        <head>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 40px; color: #333; }
+            h1 { font-size: 24px; color: #007AFF; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+            h2 { font-size: 20px; color: #343a40; margin-top: 30px; }
+            .report-box { background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-top: 15px; }
+            p { font-size: 16px; line-height: 1.6; }
+            strong { font-weight: bold; color: #000; }
+            ul { padding-left: 20px; }
+            li { margin-bottom: 5px; }
+          </style>
+        </head>
+        <body>
+          <h1>Performance Report: ${attempt.test_type}</h1>
+          <div class="report-box">
+            <p><strong>Athlete:</strong> ${result.username}</p>
+            <p><strong>Total Jumps:</strong> ${analysis.total_jumps} reps</p>
+            <p><strong>Max Jump Height:</strong> ${analysis.max_jump_height_px} px</p>
+            <p><strong>Assessed Level:</strong> ${analysis.assessed_level}</p>
+          </div>
+          
+          <h2>Jump Consistency Data</h2>
+          <div class="report-box">
+            <ul>${jumpsList}</ul>
+          </div>
+
+          <h2>Coach's Breakdown</h2>
+          <div class="report-box">
+            <p><strong>Overall Performance:</strong> The athlete demonstrates significant explosive power, achieving a peak jump that meets an 'Advanced' performance benchmark. The ability to execute ${analysis.total_jumps} jumps in ${analysis.duration_seconds} seconds indicates excellent anaerobic stamina and rapid recovery.</p>
+            <p><strong>Key Insight - Consistency:</strong> The primary area for improvement is consistency. While the peak performance was outstanding, there's a wide variance in jump height across the set. This suggests a potential breakdown in form or technique as fatigue sets in.</p>
+            <p><strong>Recommendation:</strong> Focus on maintaining a consistent jump form, particularly the depth of the squat and explosive arm swing, on every repetition. Drills emphasizing plyometric endurance will help bridge the gap between the athlete's maximum potential and their average performance.</p>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const handleSharePdf = async (result) => {
+    if (!result) return;
+    try {
+      const htmlContent = createPdfHtml(result);
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Share your report' });
+    } catch (err) {
+      console.error("Failed to create or share PDF:", err);
+      Alert.alert("Error", "Could not generate PDF report.");
+    }
+  };
+
   const renderResult = () => {
     if (!attempt) return null;
 
@@ -148,7 +206,13 @@ export default function AttemptDetailScreen() {
       
       return (
         <>
-          <Text style={styles.sectionTitle}>Annotated Video</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.sectionTitle}>Annotated Video</Text>
+            <TouchableOpacity style={styles.downloadButton} onPress={() => handleSharePdf(parsedResult)}>
+              <Ionicons name="download-outline" size={24} color="#007AFF" />
+              <Text style={styles.downloadButtonText}>Download Report</Text>
+            </TouchableOpacity>
+          </View>
           <Video
             source={{ uri: attempt.annotated_video }}
             rate={1.0}
@@ -216,12 +280,32 @@ const styles = StyleSheet.create({
   centered: {
     justifyContent: "center",
     alignItems: "center",
+    flex: 1,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
   },
   sectionTitle: {
     fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 15,
     color: "#343a40",
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eef7ff',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  downloadButtonText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
   },
   video: {
     width: "100%",

@@ -1,6 +1,6 @@
 import {createClient} from "@sanity/client";
 import imageUrlBuilder from "@sanity/image-url";
-
+import {SANITY_API_TOKEN} from "../../../env.js";
 
 export const config = {
     projectId: "mdfglno5",
@@ -15,7 +15,7 @@ export const client = createClient(config);
 
 const adminConfig = {
     ...config,
-    token:process.env.SANITY_API_TOKEN,
+    token:SANITY_API_TOKEN,
 };
 export const adminClient = createClient(adminConfig);
 
