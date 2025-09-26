@@ -33,6 +33,16 @@ export default function AssessmentLayout() {
                                         ),
         }}
       />
+      <Tabs.Screen
+        name="leaderboard"
+        options={{
+          headerShown: true,
+          headerTitle: "Leaderboard",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="trophy-outline" color={color} size={size} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

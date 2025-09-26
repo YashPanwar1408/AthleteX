@@ -1,9 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 export default function AthleteDashboard() {
   const handleBackToSelection = async () => {
     try {
@@ -23,7 +22,7 @@ export default function AthleteDashboard() {
         <Text className="text-center text-gray-600 mt-2">Choose how you want to start</Text>
       </View>
 
-      <View className="flex-1 p-4 gap-4">
+      <ScrollView className="flex-1 p-4" contentContainerStyle={{ gap: 16 }}>
         <TouchableOpacity
           className="bg-white rounded-2xl shadow-lg overflow-hidden h-32"
           onPress={() => router.push('/(app)/(general)/(tabs)')}
@@ -59,7 +58,9 @@ export default function AthleteDashboard() {
             </View>
           </View>
         </TouchableOpacity>
-      </View>
+
+        
+      </ScrollView>
       
       <View className="p-4">
         <TouchableOpacity 

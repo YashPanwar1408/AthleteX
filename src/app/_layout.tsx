@@ -20,8 +20,29 @@ function InitialLayout() {
       // Redirect to sign-in if not signed in and not in auth group
       router.replace('/(auth)/sign-in');
     } else if (isSignedIn && inAuthGroup) {
-      // Redirect to home page if signed in and in auth group
-      router.replace('/(selection)');
+      // Signed in: decide landing based on stored role/onboarding
+      (async () => {
+        try {
+          const userType = await (await import('@react-native-async-storage/async-storage')).default.getItem('@user_type');
+          if (userType === 'athlete') {
+            const done = await (await import('@react-native-async-storage/async-storage')).default.getItem('@athlete_onboarded');
+            if (done === 'true') {
+              router.replace('/(app)/(athlete)/dashboard');
+              return;
+            }
+          }
+          if (userType === 'sai') {
+            const doneSai = await (await import('@react-native-async-storage/async-storage')).default.getItem('@sai_onboarded');
+            if (doneSai === 'true') {
+              router.replace('/(app)/(sai)/home');
+              return;
+            }
+          }
+          router.replace('/(selection)');
+        } catch {
+          router.replace('/(selection)');
+        }
+      })();
     }
   }, [isSignedIn, segments, isLoaded]);
 

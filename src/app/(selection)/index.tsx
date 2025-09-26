@@ -12,7 +12,7 @@ export default function SelectionScreen() {
         if (userType === 'athlete') {
           const done = await AsyncStorage.getItem('@athlete_onboarded');
           if (done === 'true') {
-            router.replace('/(app)/(athlete)/(tabs)/TESTS');
+            router.replace('/(app)/(athlete)/dashboard');
             return;
           }
         }
