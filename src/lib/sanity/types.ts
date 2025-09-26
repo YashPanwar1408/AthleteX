@@ -45,6 +45,7 @@ export interface TestAttempt {
   testType: string;
   userId: string;
   videoUrl: string; 
+  annotatedVideoUrl:string;
   status: "in-progress" | "done" | "failed";
   result?: string;
   score?: number;
