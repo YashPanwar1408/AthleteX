@@ -3,7 +3,7 @@ import numpy as np
 from collections import deque
 from ..pose_detection import PoseDetector
 
-def analyze(input_path: str, output_path: str, user_level: str):
+def analyze(input_path: str, output_path: str):
     print("--- Running Endurance Run Analysis ---")
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():

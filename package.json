@@ -19,6 +19,7 @@
     "@sanity/client": "^7.11.1",
     "@sanity/image-url": "^1.2.0",
     "@supabase/supabase-js": "^2.57.4",
+    "base64-arraybuffer": "^1.0.2",
     "expo": "^53.0.4",
     "expo-av": "^16.0.7",
     "expo-camera": "^17.0.8",
@@ -52,6 +53,8 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~19.0.10",
+    "react-native-worklets": "^0.6.0",
+    "react-native-worklets-core": "^1.6.2",
     "typescript": "~5.8.3"
   },
   "private": true

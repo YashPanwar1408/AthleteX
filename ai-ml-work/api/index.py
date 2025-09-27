@@ -22,19 +22,55 @@ TEMP_DIR = "/tmp"
 
 @app.route("/api/analyze", methods=["POST"])
 def handle_analysis():
+    print(f"Received request: {request.method} {request.url}")
+    print(f"Content-Type: {request.content_type}")
+    print(f"Raw data: {request.get_data()}")
+    
     data = request.get_json()
     if not data:
-        return jsonify({"error": "Invalid request body"}), 400
+        print("ERROR: No JSON data received")
+        return jsonify({"error": "Invalid request body - no JSON data"}), 400
 
+    print(f"Parsed JSON data: {data}")
+    
     video_url = data.get("videoUrl")
     test_type = data.get("testType")
     attempt_id = data.get("attemptId")
     user_id = data.get("userId")
     user_name = data.get("username")
+    # Handle both field name variations for backward compatibility
+    profile_image_url = data.get("profileImageUrl") or data.get("imageProfileUrl")
 
-    if not all([video_url, test_type, attempt_id, user_id, user_name]):
-        return jsonify({"error": "Missing required fields"}), 400
+    print(f"Extracted fields - video_url: {video_url}, test_type: {test_type}, attempt_id: {attempt_id}")
+    print(f"user_id: {user_id}, user_name: {user_name}, profile_image_url: {profile_image_url}")
 
+    missing_fields = []
+    if not video_url:
+        missing_fields.append("videoUrl")
+    if not test_type:
+        missing_fields.append("testType")
+    if not attempt_id:
+        missing_fields.append("attemptId")
+    if not user_id:
+        missing_fields.append("userId")
+    if not user_name:
+        missing_fields.append("username")
+    if not profile_image_url:
+        missing_fields.append("profileImageUrl")
+
+    if missing_fields:
+        error_msg = f"Missing required fields: {', '.join(missing_fields)}"
+        print(f"ERROR: {error_msg}")
+        return jsonify({"error": error_msg}), 400
+
+    # Validate test type
+    valid_test_types = ["vertical-jump", "sit-ups", "shuttle-run", "endurance-run"]
+    if test_type.lower() not in valid_test_types:
+        error_msg = f"Invalid test type '{test_type}'. Supported types: {', '.join(valid_test_types)}"
+        print(f"ERROR: {error_msg}")
+        return jsonify({"error": error_msg}), 400
+
+    print(f"All validation passed. Starting analysis for test type: {test_type}")
     os.makedirs(TEMP_DIR, exist_ok=True)
     
     unique_id = str(uuid.uuid4())
@@ -42,17 +78,24 @@ def handle_analysis():
     temp_output_path = os.path.join(TEMP_DIR, f"{unique_id}_output.mp4")
 
     try:
+        print(f"Downloading video from: {video_url}")
         response = requests.get(video_url, stream=True)
         response.raise_for_status()
+        print(f"Video download successful. Status code: {response.status_code}")
+        
         with open(temp_input_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
+        print(f"Video saved to: {temp_input_path}")
         
+        print(f"Starting analysis for test type: {test_type}")
         ml_analysis_results = run_analysis(
             test_type=test_type,
             input_path=temp_input_path,
-            output_path=temp_output_path
+            output_path=temp_output_path,
+            profile_image_url=profile_image_url
         )
+        print(f"Analysis completed. Results: {ml_analysis_results}")
         
         if "error" in ml_analysis_results:
              raise Exception(ml_analysis_results["error"])
@@ -73,6 +116,7 @@ def handle_analysis():
             "status": "done",
             "result": json.dumps(final_result_payload, indent=2),
             "annotated_video": annotated_video_url
+            
         }
 
         supabase.table("attempts").update(update_data).eq("id", attempt_id).execute()

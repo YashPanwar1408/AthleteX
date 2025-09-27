@@ -8,16 +8,151 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
 import { client } from '../../../lib/sanity/client';
+import { supabase } from "../../../lib/supabase/supbaseClient";
 import { AthleteProfile, TestAttempt } from '../../../lib/sanity/types';
-import { Video } from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 
 interface ReviewedAttemptWithAthlete extends TestAttempt {
   athlete: AthleteProfile;
+  supabaseResult?: any;
+  annotatedVideoUrl: string;
 }
+const CheatDetectionReport = ({ cheatData }) => {
+  if (!cheatData) return null;
+  if (cheatData.error) {
+    return (
+      <View style={[styles.cheatCard, styles.cheatCardWarning]}>
+        <Ionicons name="alert-circle-outline" size={24} color="#f59e0b" />
+        <View style={{flex: 1, marginLeft: 12}}>
+          <Text style={styles.cheatTitle}>Verification Warning</Text>
+          <Text style={styles.cheatDetails}>{cheatData.error}</Text>
+        </View>
+      </View>
+    );
+  }
+  const isCheat = cheatData.is_cheat_detected;
+  return (
+    <View style={[styles.cheatCard, isCheat ? styles.cheatCardRed : styles.cheatCardGreen]}>
+      <Ionicons name={isCheat ? "shield-half-outline" : "shield-checkmark-outline"} size={24} color={isCheat ? "#dc2626" : "#16a34a"} />
+      <View style={{flex: 1, marginLeft: 12}}>
+        <Text style={styles.cheatTitle}>{isCheat ? "Identity Flagged" : "Identity Verified"}</Text>
+        <Text style={styles.cheatDetails}>{cheatData.details}</Text>
+        <Text style={styles.cheatConfidence}>Match Confidence: {cheatData.match_confidence_percent}%</Text>
+      </View>
+    </View>
+  );
+};
+
+const VerticalJumpReport = ({ result }) => {
+  const analysis = result.analysisData;
+  const jumps = analysis.jump_heights_px || [];
+  const maxChartHeight = 150;
+  const getBarHeight = (h) => (h / analysis.max_jump_height_px) * maxChartHeight || 0;
+  const max_jump_height_cm = Math.round((0.026458333 * analysis.max_jump_height_px) * 100) / 100;
+  return (
+    <View style={styles.analysisContainer}>
+      <View style={styles.metricsGrid}>
+        <MetricCard icon="barbell-outline" label="Total Jumps" value={analysis.total_jumps} unit="reps" />
+        <MetricCard icon="arrow-up-outline" label="Max Jump (cm)" value={max_jump_height_cm} unit="cm" />
+      </View>
+      <Text style={styles.sectionTitle}>Jump Consistency</Text>
+      <View style={styles.chartContainer}>
+        {jumps.map((height, index) => (
+          <View key={index} style={styles.barWrapper}><View style={[styles.bar, { height: getBarHeight(height) }]} /><Text style={styles.barLabel}>{index + 1}</Text></View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+const SitUpsReport = ({ result }) => {
+  const analysis = result.analysisData;
+  return (
+    <View style={styles.analysisContainer}>
+      <View style={styles.metricsGrid}>
+        <MetricCard icon="barbell-outline" label="Total Reps" value={analysis.total_reps} unit="reps" />
+        <MetricCard icon="time-outline" label="Duration" value={analysis.duration_seconds} unit="s" />
+      </View>
+    </View>
+  );
+};
+
+const ShuttleRunReport = ({ result }) => {
+  const analysis = result.analysisData;
+  const avgLapTime = analysis.total_laps > 0 ? (analysis.total_time_seconds / analysis.total_laps).toFixed(2) : 0;
+  return (
+    <View style={styles.analysisContainer}>
+      <View style={styles.metricsGrid}>
+        <MetricCard icon="walk-outline" label="Total Laps" value={analysis.total_laps} unit="laps" />
+        <MetricCard icon="time-outline" label="Total Time" value={analysis.total_time_seconds} unit="s" />
+        <MetricCard icon="speedometer-outline" label="Avg. Lap Time" value={avgLapTime} unit="s" />
+      </View>
+    </View>
+  );
+};
+
+const EnduranceRunReport = ({ result }) => {
+  const analysis = result.analysisData;
+  return (
+    <View style={styles.analysisContainer}>
+      <View style={styles.metricsGrid}>
+        <MetricCard icon="trending-up-outline" label="Time Running" value={`${analysis.run_percentage}%`} color="#28a745" unit="" />
+        <MetricCard icon="trending-down-outline" label="Time Walking" value={`${analysis.walk_percentage}%`} color="#ffc107" unit="" />
+        <MetricCard icon="remove-circle-outline" label="Time Stopped" value={`${analysis.stop_percentage}%`} color="#dc3545" unit="" />
+      </View>
+    </View>
+  );
+};
+
+const AnalysisReport = ({ resultString, testType }) => {
+    let parsedResult;
+    try {
+        parsedResult = JSON.parse(resultString);
+    } catch (e) {
+        return <Text style={styles.errorText}>Error parsing result data.</Text>;
+    }
+     if (!parsedResult || !parsedResult.analysisData) {
+            return <Text style={styles.errorText}>Analysis data is missing or invalid.</Text>;
+        }
+    const cheatData = parsedResult.analysisData.cheatDetection;
+    
+    const renderSpecificReport = () => {
+        if (testType.includes("Jump")) {
+           return <VerticalJumpReport result={parsedResult} />;
+       }
+       if (testType.includes("Sit-Ups")) {
+           return <SitUpsReport result={parsedResult} />;
+       }
+       if (testType.includes("Shuttle")) {
+           return <ShuttleRunReport result={parsedResult} />;
+       }
+       if (testType.includes("Endurance")) {
+           return <EnduranceRunReport result={parsedResult} />;
+       }
+      }
+        return (
+           <>
+               {renderSpecificReport()}
+               <Text style={styles.detailsSectionTitle}>Identity Verification</Text>
+               <CheatDetectionReport cheatData={cheatData} />
+           </>
+       );
+};
+
+const MetricCard = ({ icon, label, value, unit, color = "#333" }) => (
+  <View style={styles.metricCard}>
+    <Ionicons name={icon} size={28} color="#7C3AED" />
+    <Text style={styles.metricLabel}>{label}</Text>
+    <Text style={[styles.metricValue, { color }]}>
+      {value} {unit && <Text style={styles.metricUnit}>{unit}</Text>}
+    </Text>
+  </View>
+);
 
 export default function ReviewedTestsPage() {
   const [reviewedAttempts, setReviewedAttempts] = useState<ReviewedAttemptWithAthlete[]>([]);
@@ -27,6 +162,7 @@ export default function ReviewedTestsPage() {
   const [selectedAttempt, setSelectedAttempt] = useState<ReviewedAttemptWithAthlete | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
   useEffect(() => {
     fetchReviewedTests();
@@ -39,53 +175,13 @@ export default function ReviewedTestsPage() {
   const fetchReviewedTests = async () => {
     try {
       setLoading(true);
-      
-      // Fetch all test attempts that have been reviewed (status = "done")
       const attemptsData = await client.fetch(`
         *[_type == "testAttempt" && status == "done"] {
-          _id,
-          testType,
-          userId,
-          videoUrl,
-          status,
-          result,
-          score,
-          remarks,
-          assessedBy,
-          assessedAt,
-          createdAt
+          ...,
+          "athlete": *[_type == "athlete" && (clerkId == ^.userId || _id == ^.userId)][0]
         } | order(assessedAt desc)
       `);
-
-      // For each attempt, fetch the athlete information
-      const attemptsWithAthletes = await Promise.all(
-        attemptsData.map(async (attempt: TestAttempt) => {
-          const athleteData = await client.fetch(`
-            *[_type == "athlete" && (clerkId == $userId || _id == $userId)][0] {
-              _id,
-              name,
-              age,
-              gender,
-              sport,
-              height,
-              weight,
-              city,
-              contact,
-              clerkId,
-              createdAt
-            }
-          `, { userId: attempt.userId });
-
-          return {
-            ...attempt,
-            athlete: athleteData,
-          };
-        })
-      );
-
-      // Filter out attempts where athlete data is not found
-      const validAttempts = attemptsWithAthletes.filter(attempt => attempt.athlete);
-      
+      const validAttempts = attemptsData.filter(attempt => attempt.athlete);
       setReviewedAttempts(validAttempts);
     } catch (error) {
       console.error('Error fetching reviewed tests:', error);
@@ -100,14 +196,28 @@ export default function ReviewedTestsPage() {
       setFilteredAttempts(reviewedAttempts);
       return;
     }
-
     const filtered = reviewedAttempts.filter(attempt =>
       attempt.athlete.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       attempt.testType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      attempt.athlete.sport.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (attempt.score && attempt.score.toString().includes(searchQuery))
     );
     setFilteredAttempts(filtered);
+  };
+  
+  const fetchSupabaseDataForAttempt = async (attempt) => {
+    if (!attempt) return null;
+    const { data, error } = await supabase
+      .from('attempts')
+      .select('result, annotated_video')
+      .eq('video_url', attempt.videoUrl)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    if (error) {
+      console.error('Error fetching Supabase data:', error);
+      throw new Error("Could not fetch ML analysis from Supabase.");
+    }
+    return data;
   };
 
   const openVideoModal = (attempt: ReviewedAttemptWithAthlete) => {
@@ -115,9 +225,24 @@ export default function ReviewedTestsPage() {
     setShowVideoModal(true);
   };
 
-  const openDetailsModal = (attempt: ReviewedAttemptWithAthlete) => {
+  const openDetailsModalWithData = async (attempt: ReviewedAttemptWithAthlete) => {
+    setIsFetchingDetails(true);
     setSelectedAttempt(attempt);
     setShowDetailsModal(true);
+    try {
+      const supabaseData = await fetchSupabaseDataForAttempt(attempt);
+      if (supabaseData) {
+        setSelectedAttempt(prev => ({
+          ...prev,
+          supabaseResult: supabaseData.result,
+          annotatedVideoUrl: supabaseData.annotated_video,
+        }));
+      }
+    } catch (error) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setIsFetchingDetails(false);
+    }
   };
 
   const getScoreColor = (score: number) => {
@@ -138,9 +263,8 @@ export default function ReviewedTestsPage() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-gray-50 justify-center items-center">
+      <View style={styles.container}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text className="text-gray-600 mt-4">Loading reviewed tests...</Text>
       </View>
     );
   }
@@ -155,240 +279,113 @@ export default function ReviewedTestsPage() {
           headerTintColor: 'white',
         }}
       />
-
-      <View className="flex-1 bg-gray-50">
-        {/* Search Bar */}
-        <View className="bg-white p-4 border-b border-gray-200">
-          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
-            <Ionicons name="search" size={20} color="#6B7280" />
-            <TextInput
-              className="flex-1 ml-2 text-gray-900"
-              placeholder="Search by athlete name, test type, sport, or score..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#9CA3AF"
-            />
-          </View>
+      <View style={styles.container}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color="#6B7280" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#9CA3AF"
+          />
         </View>
 
-        {/* Stats */}
-        <View className="bg-white mx-4 mt-4 rounded-lg p-4 shadow-sm">
-          <View className="flex-row justify-between items-center">
-            <View>
-              <Text className="text-lg font-bold text-gray-900">Completed Reviews</Text>
-              <Text className="text-sm text-gray-600">Tests that have been assessed</Text>
-            </View>
-            <View className="bg-green-100 px-4 py-2 rounded-full">
-              <Text className="text-green-800 font-bold text-xl">{reviewedAttempts.length}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Reviewed Tests List */}
-        <ScrollView className="flex-1 px-4 mt-4">
-          {filteredAttempts.length === 0 ? (
-            <View className="bg-white rounded-lg p-8 items-center mt-8">
-              <Ionicons name="clipboard-outline" size={48} color="#9CA3AF" />
-              <Text className="text-gray-600 mt-2 text-center">
-                {reviewedAttempts.length === 0 
-                  ? "No reviewed tests yet" 
-                  : "No tests match your search"}
-              </Text>
-            </View>
-          ) : (
-            filteredAttempts.map((attempt) => (
-              <View key={attempt._id} className="bg-white rounded-lg p-4 mb-3 shadow-sm">
-                {/* Athlete Info */}
-                <View className="flex-row justify-between items-start mb-3">
-                  <View className="flex-1">
-                    <Text className="text-lg font-bold text-gray-900">{attempt.athlete.name}</Text>
-                    <Text className="text-sm text-gray-600">{attempt.athlete.sport} • {attempt.athlete.age} years</Text>
-                    <Text className="text-sm text-gray-600">{attempt.athlete.city}</Text>
-                  </View>
-                  <View className="items-end">
-                    <View className="bg-green-100 px-2 py-1 rounded-full">
-                      <Text className="text-green-800 text-xs font-medium">Reviewed</Text>
-                    </View>
-                  </View>
+        <ScrollView>
+          {filteredAttempts.map((attempt) => (
+            <View key={attempt._id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.athleteName}>{attempt.athlete.name}</Text>
+                  <Text style={styles.athleteInfo}>{attempt.athlete.sport} • {attempt.athlete.age} years</Text>
                 </View>
-
-                {/* Test Info */}
-                <View className="bg-gray-50 rounded-lg p-3 mb-3">
-                  <View className="flex-row justify-between items-start mb-2">
-                    <View className="flex-1">
-                      <Text className="font-semibold text-gray-900">{attempt.testType}</Text>
-                      <Text className="text-sm text-gray-600">
-                        Assessed: {new Date(attempt.assessedAt || '').toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <View className="items-end">
-                      <Text className={`text-2xl font-bold ${getScoreColor(attempt.score || 0)}`}>
-                        {attempt.score}/100
-                      </Text>
-                      <Text className={`text-sm font-medium ${getScoreColor(attempt.score || 0)}`}>
-                        {getScoreLabel(attempt.score || 0)}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  {attempt.remarks && (
-                    <View className="mt-2">
-                      <Text className="text-sm text-gray-700 italic">
-                        "{attempt.remarks.length > 100 ? 
-                          attempt.remarks.substring(0, 100) + '...' : 
-                          attempt.remarks}"
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Action Buttons */}
-                <View className="flex-row gap-3">
-                  <TouchableOpacity
-                    onPress={() => openVideoModal(attempt)}
-                    className="flex-1 bg-blue-500 rounded-lg py-3 flex-row items-center justify-center"
-                  >
-                    <Ionicons name="play" size={20} color="white" />
-                    <Text className="text-white font-semibold ml-2">Watch Video</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    onPress={() => openDetailsModal(attempt)}
-                    className="flex-1 bg-gray-600 rounded-lg py-3 flex-row items-center justify-center"
-                  >
-                    <Ionicons name="document-text" size={20} color="white" />
-                    <Text className="text-white font-semibold ml-2">View Details</Text>
-                  </TouchableOpacity>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusText}>Reviewed</Text>
                 </View>
               </View>
-            ))
-          )}
+              <View style={styles.testInfoContainer}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.testType}>{attempt.testType}</Text>
+                  <Text style={styles.assessedDate}>
+                    Assessed: {new Date(attempt.assessedAt || '').toLocaleDateString()}
+                  </Text>
+                </View>
+                <View style={{alignItems: 'flex-end'}}>
+                  <Text style={[styles.score, {color: getScoreColor(attempt.score || 0) }]}>
+                    {attempt.score}/100
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  onPress={() => openVideoModal(attempt)}
+                  style={styles.button}
+                >
+                  <Ionicons name="play" size={20} color="white" />
+                  <Text style={styles.buttonText}>Original Video</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => openDetailsModalWithData(attempt)}
+                  style={[styles.button, styles.detailsButton]}
+                >
+                  <Ionicons name="analytics" size={20} color="white" />
+                  <Text style={styles.buttonText}>View Analysis</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
         </ScrollView>
 
-        {/* Video Modal */}
-        <Modal
-          visible={showVideoModal}
-          animationType="slide"
-          onRequestClose={() => setShowVideoModal(false)}
-        >
-          <View className="flex-1 bg-black">
-            <View className="flex-row justify-between items-center p-4 bg-black">
-              <TouchableOpacity
-                onPress={() => setShowVideoModal(false)}
-                className="bg-gray-700 rounded-full p-2"
-              >
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-              <Text className="text-white font-semibold">
-                {selectedAttempt?.athlete.name} - {selectedAttempt?.testType}
-              </Text>
-              <View className="w-10" />
-            </View>
-            
+        <Modal visible={showVideoModal} animationType="slide" onRequestClose={() => setShowVideoModal(false)}>
+          <View style={styles.modalView}>
+            <TouchableOpacity
+              onPress={() => setShowVideoModal(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
             {selectedAttempt?.videoUrl && (
               <Video
                 source={{ uri: selectedAttempt.videoUrl }}
-                style={{ flex: 1, width: '100%' }}
+                style={{ flex: 1 }}
                 useNativeControls
-                resizeMode="contain"
+                resizeMode={ResizeMode.CONTAIN}
               />
             )}
           </View>
         </Modal>
 
-        {/* Details Modal */}
-        <Modal
-          visible={showDetailsModal}
-          animationType="slide"
-          onRequestClose={() => setShowDetailsModal(false)}
-        >
-          <View className="flex-1 bg-white">
-            <View className="flex-row justify-between items-center p-4 border-b border-gray-200">
+        <Modal visible={showDetailsModal} animationType="slide" onRequestClose={() => setShowDetailsModal(false)}>
+          <View style={{flex: 1, backgroundColor: '#f8f9fa'}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>ML Analysis Details</Text>
               <TouchableOpacity
                 onPress={() => setShowDetailsModal(false)}
-                className="bg-gray-100 rounded-full p-2"
+                style={styles.modalCloseButton}
               >
                 <Ionicons name="close" size={24} color="#374151" />
               </TouchableOpacity>
-              <Text className="text-lg font-semibold text-gray-900">
-                Assessment Details
-              </Text>
-              <View className="w-10" />
             </View>
-
-            <ScrollView className="flex-1 p-4">
-              {selectedAttempt && (
+            <ScrollView contentContainerStyle={{padding: 20}}>
+              {isFetchingDetails ? (
+                <ActivityIndicator size="large" color="#7C3AED" />
+              ) : (
                 <>
-                  {/* Athlete Info */}
-                  <View className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <Text className="text-lg font-bold text-gray-900 mb-2">Athlete Information</Text>
-                    <View className="space-y-2">
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">Name:</Text>
-                        <Text className="font-semibold">{selectedAttempt.athlete.name}</Text>
-                      </View>
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">Sport:</Text>
-                        <Text className="font-semibold">{selectedAttempt.athlete.sport}</Text>
-                      </View>
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">Age:</Text>
-                        <Text className="font-semibold">{selectedAttempt.athlete.age} years</Text>
-                      </View>
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">City:</Text>
-                        <Text className="font-semibold">{selectedAttempt.athlete.city}</Text>
-                      </View>
+                  <Text style={styles.detailsTestType}>{selectedAttempt?.testType}</Text>
+                  {selectedAttempt?.annotatedVideoUrl && (
+                    <View style={{marginBottom: 20}}>
+                       <Text style={styles.detailsSectionTitle}>Annotated Video</Text>
+                       <Video
+                          source={{ uri: selectedAttempt.annotatedVideoUrl }}
+                          style={styles.detailsVideo}
+                          useNativeControls
+                          resizeMode={ResizeMode.CONTAIN}
+                       />
                     </View>
-                  </View>
-
-                  {/* Test Info */}
-                  <View className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <Text className="text-lg font-bold text-gray-900 mb-2">Test Information</Text>
-                    <View className="space-y-2">
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">Test Type:</Text>
-                        <Text className="font-semibold">{selectedAttempt.testType}</Text>
-                      </View>
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">Submitted:</Text>
-                        <Text className="font-semibold">
-                          {new Date(selectedAttempt.createdAt).toLocaleDateString()}
-                        </Text>
-                      </View>
-                      <View className="flex-row justify-between">
-                        <Text className="text-gray-600">Assessed:</Text>
-                        <Text className="font-semibold">
-                          {new Date(selectedAttempt.assessedAt || '').toLocaleDateString()}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Assessment Results */}
-                  <View className="bg-gray-50 rounded-lg p-4 mb-4">
-                    <Text className="text-lg font-bold text-gray-900 mb-2">Assessment Results</Text>
-                    <View className="space-y-3">
-                      <View className="flex-row justify-between items-center">
-                        <Text className="text-gray-600">Score:</Text>
-                        <View className="items-end">
-                          <Text className={`text-2xl font-bold ${getScoreColor(selectedAttempt.score || 0)}`}>
-                            {selectedAttempt.score}/100
-                          </Text>
-                          <Text className={`text-sm font-medium ${getScoreColor(selectedAttempt.score || 0)}`}>
-                            {getScoreLabel(selectedAttempt.score || 0)}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      <View>
-                        <Text className="text-gray-600 mb-2">Remarks:</Text>
-                        <Text className="text-gray-900 bg-white p-3 rounded border">
-                          {selectedAttempt.remarks || 'No remarks provided'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+                  )}
+                  {selectedAttempt?.supabaseResult && (
+                     <AnalysisReport resultString={selectedAttempt.supabaseResult} testType={selectedAttempt.testType} />
+                  )}
                 </>
               )}
             </ScrollView>
@@ -398,3 +395,50 @@ export default function ReviewedTestsPage() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 12, margin: 16, elevation: 2 },
+  searchInput: { flex: 1, height: 40, marginLeft: 8 },
+  card: { backgroundColor: 'white', borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12, elevation: 2 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  athleteName: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  athleteInfo: { fontSize: 14, color: '#6b7280' },
+  statusBadge: { backgroundColor: '#d1fae5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  statusText: { color: '#065f46', fontWeight: '500', fontSize: 12 },
+  testInfoContainer: { backgroundColor: '#f9fafb', borderRadius: 8, padding: 12, marginBottom: 12 },
+  testType: { fontWeight: '600', color: '#111827' },
+  assessedDate: { fontSize: 12, color: '#6b7280' },
+  score: { fontSize: 28, fontWeight: 'bold' },
+  buttonRow: { flexDirection: 'row', gap: 12 },
+  button: { flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  detailsButton: { backgroundColor: '#4b5563' },
+  buttonText: { color: 'white', fontWeight: '600', marginLeft: 8 },
+  modalView: { flex: 1, backgroundColor: 'black', justifyContent: 'center' },
+  closeButton: { position: 'absolute', top: 40, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 1 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  modalTitle: { fontSize: 18, fontWeight: '600' },
+  modalCloseButton: { padding: 8 },
+  detailsTestType: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
+  detailsSectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
+  detailsVideo: { width: '100%', height: 220, backgroundColor: '#000', borderRadius: 12 },
+  analysisContainer: { width: '100%' },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 },
+  metricCard: { backgroundColor: '#fff', borderRadius: 12, padding: 15, width: '48%', alignItems: 'center', marginBottom: 15, elevation: 3 },
+  metricLabel: { fontSize: 14, color: '#6c757d', marginTop: 5 },
+  metricValue: { fontSize: 24, fontWeight: 'bold', marginTop: 2 },
+  metricUnit: { fontSize: 14, fontWeight: 'normal', color: '#6c757d' },
+  sectionTitle: { fontSize: 20, fontWeight: "bold", color: "#343a40", marginBottom: 15 },
+  chartContainer: { backgroundColor: '#fff', borderRadius: 12, paddingVertical: 20, paddingHorizontal: 10, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: 200, marginBottom: 25, elevation: 3 },
+  barWrapper: { alignItems: 'center', flex: 1 },
+  bar: { backgroundColor: '#7C3AED', width: '60%', borderRadius: 4 },
+  barLabel: { fontSize: 12, color: '#6c757d', marginTop: 5 },
+  errorText: { fontSize: 18, color: "red", fontWeight: "600" },
+  cheatCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  cheatCardGreen: { backgroundColor: '#d1fae5', borderWidth: 1, borderColor: '#a7f3d0' },
+  cheatCardRed: { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fecaca' },
+  cheatCardWarning: { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde68a' },
+  cheatTitle: { fontSize: 16, fontWeight: 'bold', color: '#1f2937' },
+  cheatDetails: { fontSize: 14, color: '#4b5563', marginTop: 2 },
+  cheatConfidence: { fontSize: 12, color: '#6b7280', marginTop: 4, fontStyle: 'italic' },
+});

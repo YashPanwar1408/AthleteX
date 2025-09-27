@@ -3,27 +3,31 @@ from .analysis.vertical_jump import analyze as analyze_vertical_jump
 from .analysis.situps import analyze as analyze_situps
 from .analysis.shuttle_run import analyze as analyze_shuttle_run
 from .analysis.endurance_run import analyze as analyze_endurance_run
+from .cheat_detection import verify_face
 
-def run_analysis(test_type: str, input_path: str, output_path: str,):
+def run_analysis(test_type: str, input_path: str, output_path: str,profile_image_url: str = None):
     analysis_results = {}
 
     if test_type.lower() == "vertical-jump":
-        analysis_results = analyze_vertical_jump(input_path, output_path, )
+        analysis_results = analyze_vertical_jump(input_path, output_path)
     
     elif test_type.lower() == "sit-ups":
-        analysis_results = analyze_situps(input_path, output_path, )
+        analysis_results = analyze_situps(input_path, output_path)
         
     elif test_type.lower() == "shuttle-run":
-        analysis_results = analyze_shuttle_run(input_path, output_path,)
+        analysis_results = analyze_shuttle_run(input_path, output_path)
         
     elif test_type.lower() == "endurance-run":
-        analysis_results = analyze_endurance_run(input_path, output_path, )
+        analysis_results = analyze_endurance_run(input_path, output_path)
         
     else:
         error_message = f"Error: Analysis for test type '{test_type}' is not implemented."
         print(error_message)
         return {"error": error_message}
-
+    
+    if profile_image_url:
+        cheat_results = verify_face(profile_image_url, input_path)
+        analysis_results["cheatDetection"] = cheat_results
     print(json.dumps(analysis_results, indent=4))
     return analysis_results
 

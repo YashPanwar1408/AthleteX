@@ -10,7 +10,17 @@ export const config = {
     token: SANITY_API_TOKEN,
   };
 
-export const client = createClient(config);
+// Using try/catch to gracefully handle import failures
+let client: any;
+try {
+  client = createClient(config);
+} catch (error) {
+  console.warn('Sanity client initialization error:', error);
+  client = null;
+}
+
+export const clientSafe = client;
+export { client };
 
 
 const adminConfig = {

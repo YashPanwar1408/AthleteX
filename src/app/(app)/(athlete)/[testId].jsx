@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState,useEffect } from "react";
 import {
   View,
   Text,
@@ -151,7 +151,34 @@ export default function TestScreen() {
   const [uploading, setUploading] = useState(false);
   const [selectedVideoUri, setSelectedVideoUri] = useState(null);
   const { user } = useUser();
+    const [athleteProfile, setAthleteProfile] = useState(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+useEffect(() => {
+    const fetchAthleteProfile = async () => {
+      if (!user?.id) {
+        setLoadingProfile(false);
+        return;
+      }
+      setLoadingProfile(true);
+      try {
+        const { data, error } = await supabase
+          .from('athletes')
+          .select('photo_url, height_cm')
+          .eq('clerk_id', user.id)
+          .single();
 
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+        setAthleteProfile(data);
+      } catch (err) {
+        console.error("Error fetching athlete profile:", err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+    fetchAthleteProfile();
+  }, [user?.id]);
   const test = testsData[testId];
   if (!test) {
     return (
@@ -272,6 +299,7 @@ const attemptId = await getLatestAttemptId(user.id, testKey);
         createdAt: new Date().toISOString(),
         result: attemptResult.result || "Processing",
         annotatedVideo: attemptResult.annotated_video || null,
+        
       };
       
       const createdDoc = await client.create(profile);
@@ -280,8 +308,19 @@ const attemptId = await getLatestAttemptId(user.id, testKey);
       Alert.alert("Upload Complete", "Your test is being analyzed. You can check the attempts page for results shortly.");
       router.push("/(app)/(athlete)/attempts");
       setSelectedVideoUri(null);
- 
- 
+    const getProfileImageUrl = async (userId) => {
+           const { data, error } = await supabase
+    .from("athletes")
+    .select("photo_url")
+    .eq("clerk_id", userId)
+    .single();
+
+  if (error || !data) {
+    console.error("Could not fetch photo from Supabase.",error);
+  }
+  return data;
+    }
+    const imageProfile = await getProfileImageUrl(user.id);
       await fetch("http://192.168.1.33:5001/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -291,6 +330,7 @@ const attemptId = await getLatestAttemptId(user.id, testKey);
           attemptId: attemptId,
           userId: user.id,
           username: user.fullName,
+          imageProfileUrl: imageProfile?.photo_url || null,
         }),
       });
       

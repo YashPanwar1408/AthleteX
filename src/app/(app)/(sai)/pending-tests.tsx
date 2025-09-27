@@ -8,29 +8,112 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
 import { client } from '../../../lib/sanity/client';
+import { supabase } from "../../../lib/supabase/supbaseClient";
 import { AthleteProfile, TestAttempt } from '../../../lib/sanity/types';
-import { Video } from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 import { useUser } from '@clerk/clerk-expo';
 
-interface TestAttemptWithAthlete extends TestAttempt {
+interface PendingAttemptWithAthlete extends TestAttempt {
   athlete: AthleteProfile;
+  supabaseResult?: any;
+  annotatedVideoUrl: string;
 }
+const CheatDetectionReport = ({ cheatData }) => {
+  if (!cheatData) return null;
+  if (cheatData.error) {
+    return (
+      <View style={[styles.cheatCard, styles.cheatCardWarning]}>
+        <Ionicons name="alert-circle-outline" size={24} color="#f59e0b" />
+        <View style={{flex: 1, marginLeft: 12}}>
+          <Text style={styles.cheatTitle}>Verification Warning</Text>
+          <Text style={styles.cheatDetails}>{cheatData.error}</Text>
+        </View>
+      </View>
+    );
+  }
+  const isCheat = cheatData.is_cheat_detected;
+  return (
+    <View style={[styles.cheatCard, isCheat ? styles.cheatCardRed : styles.cheatCardGreen]}>
+      <Ionicons name={isCheat ? "shield-half-outline" : "shield-checkmark-outline"} size={24} color={isCheat ? "#dc2626" : "#16a34a"} />
+      <View style={{flex: 1, marginLeft: 12}}>
+        <Text style={styles.cheatTitle}>{isCheat ? "Identity Flagged" : "Identity Verified"}</Text>
+        <Text style={styles.cheatDetails}>{cheatData.details}</Text>
+        <Text style={styles.cheatConfidence}>Match Confidence: {cheatData.match_confidence_percent}%</Text>
+      </View>
+    </View>
+  );
+};
+
+
+const AnalysisReport = ({ resultString, testType }) => {
+    let parsedResult;
+    try {
+        if (typeof resultString === 'string' && resultString.trim() !== '') {
+            parsedResult = JSON.parse(resultString);
+        } else {
+            return <Text style={styles.errorText}>No result data available.</Text>;
+        }
+    } catch (e) {
+        return <Text style={styles.errorText}>Error parsing result data.</Text>;
+    }
+
+    if (!parsedResult || !parsedResult.analysisData) {
+        return <Text style={styles.errorText}>Analysis data is missing or invalid.</Text>;
+    }
+      const cheatData = parsedResult.analysisData.cheatDetection;
+
+    const analysis = parsedResult.analysisData;
+      const max_jump_height_cm = Math.round((0.026458333 * analysis.max_jump_height_px) * 100) / 100;
+   const renderSpecificReport = () => {
+     if (testType.includes("Jump")) {
+        return <MetricCard icon="arrow-up-outline" label="Max Jump (cm)" value={max_jump_height_cm} unit="cm" />;
+    }
+    if (testType.includes("Sit-Ups")) {
+        return <MetricCard icon="barbell-outline" label="Total Reps" value={analysis.total_reps} unit="reps" />;
+    }
+    if (testType.includes("Shuttle")) {
+        return <MetricCard icon="walk-outline" label="Total Laps" value={analysis.total_laps} unit="laps" />;
+    }
+    if (testType.includes("Endurance")) {
+        return <MetricCard icon="trending-up-outline" label="Time Running" value={`${analysis.run_percentage}%`} unit="" />;
+    }
+   }
+     return (
+        <>
+            {renderSpecificReport()}
+            <Text style={styles.detailsSectionTitle}>Identity Verification</Text>
+            <CheatDetectionReport cheatData={cheatData} />
+        </>
+    );
+};
+
+const MetricCard = ({ icon, label, value, unit, color = "#333" }) => (
+  <View style={styles.metricCard}>
+    <Ionicons name={icon} size={28} color="#7C3AED" />
+    <Text style={styles.metricLabel}>{label}</Text>
+    <Text style={[styles.metricValue, { color }]}>
+      {value} {unit && <Text style={styles.metricUnit}>{unit}</Text>}
+    </Text>
+  </View>
+);
 
 export default function PendingTestsPage() {
-  const [pendingAttempts, setPendingAttempts] = useState<TestAttemptWithAthlete[]>([]);
+  const [pendingAttempts, setPendingAttempts] = useState<PendingAttemptWithAthlete[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredAttempts, setFilteredAttempts] = useState<TestAttemptWithAthlete[]>([]);
-  const [selectedAttempt, setSelectedAttempt] = useState<TestAttemptWithAthlete | null>(null);
+  const [filteredAttempts, setFilteredAttempts] = useState<PendingAttemptWithAthlete[]>([]);
+  const [selectedAttempt, setSelectedAttempt] = useState<PendingAttemptWithAthlete | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showAssessmentModal, setShowAssessmentModal] = useState(false);
   const [assessmentScore, setAssessmentScore] = useState('');
   const [assessmentRemarks, setAssessmentRemarks] = useState('');
   const [submittingAssessment, setSubmittingAssessment] = useState(false);
+  const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const { user } = useUser();
 
   useEffect(() => {
@@ -44,54 +127,35 @@ export default function PendingTestsPage() {
   const fetchPendingTests = async () => {
     try {
       setLoading(true);
-      
-      // Fetch all test attempts that are pending review
       const attemptsData = await client.fetch(`
-        *[_type == "testAttempt" && status == "in-progress"] {
-          _id,
-          testType,
-          userId,
-          videoUrl,
-          status,
-          result,
-          score,
-          remarks,
-          assessedBy,
-          assessedAt,
-          createdAt
+        *[_type == "testAttempt" && status != "done"] {
+          ...,
+          "athlete": *[_type == "athlete" && (clerkId == ^.userId || _id == ^.userId)][0]
         } | order(createdAt desc)
       `);
 
-      // For each attempt, fetch the athlete information
-      const attemptsWithAthletes = await Promise.all(
-        attemptsData.map(async (attempt: TestAttempt) => {
-          const athleteData = await client.fetch(`
-            *[_type == "athlete" && (clerkId == $userId || _id == $userId)][0] {
-              _id,
-              name,
-              age,
-              gender,
-              sport,
-              height,
-              weight,
-              city,
-              contact,
-              clerkId,
-              createdAt
-            }
-          `, { userId: attempt.userId });
-
+      const validAttemptsFromSanity = attemptsData.filter(attempt => attempt.athlete);
+      
+      const hydratedAttempts = await Promise.all(
+        validAttemptsFromSanity.map(async (attempt) => {
+          const { data: supabaseData } = await supabase
+            .from('attempts')
+            .select('status, result, annotated_video')
+            .eq('video_url', attempt.videoUrl)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+            
           return {
             ...attempt,
-            athlete: athleteData,
+            status: supabaseData?.status || attempt.status,
+            supabaseResult: supabaseData?.result || attempt.result,
+            annotatedVideoUrl: supabaseData?.annotated_video || null,
           };
         })
       );
-
-      // Filter out attempts where athlete data is not found
-      const validAttempts = attemptsWithAthletes.filter(attempt => attempt.athlete);
       
-      setPendingAttempts(validAttempts);
+      setPendingAttempts(hydratedAttempts);
     } catch (error) {
       console.error('Error fetching pending tests:', error);
       Alert.alert('Error', 'Failed to load pending tests');
@@ -105,21 +169,19 @@ export default function PendingTestsPage() {
       setFilteredAttempts(pendingAttempts);
       return;
     }
-
     const filtered = pendingAttempts.filter(attempt =>
       attempt.athlete.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      attempt.testType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      attempt.athlete.sport.toLowerCase().includes(searchQuery.toLowerCase())
+      attempt.testType.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setFilteredAttempts(filtered);
   };
 
-  const openVideoModal = (attempt: TestAttemptWithAthlete) => {
+  const openVideoModal = (attempt: PendingAttemptWithAthlete) => {
     setSelectedAttempt(attempt);
     setShowVideoModal(true);
   };
 
-  const openAssessmentModal = (attempt: TestAttemptWithAthlete) => {
+  const openAssessmentModal = (attempt: PendingAttemptWithAthlete) => {
     setSelectedAttempt(attempt);
     setAssessmentScore('');
     setAssessmentRemarks('');
@@ -128,21 +190,17 @@ export default function PendingTestsPage() {
 
   const submitAssessment = async () => {
     if (!selectedAttempt || !user) return;
-
     if (!assessmentScore || !assessmentRemarks.trim()) {
       Alert.alert('Error', 'Please provide both score and remarks');
       return;
     }
-
     const score = parseInt(assessmentScore);
     if (isNaN(score) || score < 0 || score > 100) {
       Alert.alert('Error', 'Score must be a number between 0 and 100');
       return;
     }
-
     try {
       setSubmittingAssessment(true);
-      
       await client
         .patch(selectedAttempt._id)
         .set({
@@ -153,10 +211,9 @@ export default function PendingTestsPage() {
           status: 'done',
         })
         .commit();
-
       Alert.alert('Success', 'Assessment submitted successfully');
       setShowAssessmentModal(false);
-      fetchPendingTests(); // Refresh data
+      fetchPendingTests();
     } catch (error) {
       console.error('Error submitting assessment:', error);
       Alert.alert('Error', 'Failed to submit assessment');
@@ -167,9 +224,8 @@ export default function PendingTestsPage() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-gray-50 justify-center items-center">
+      <View style={styles.centeredContainer}>
         <ActivityIndicator size="large" color="#7C3AED" />
-        <Text className="text-gray-600 mt-4">Loading pending tests...</Text>
       </View>
     );
   }
@@ -184,15 +240,13 @@ export default function PendingTestsPage() {
           headerTintColor: 'white',
         }}
       />
-
-      <View className="flex-1 bg-gray-50">
-        {/* Search Bar */}
-        <View className="bg-white p-4 border-b border-gray-200">
-          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+      <View style={styles.container}>
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
             <Ionicons name="search" size={20} color="#6B7280" />
             <TextInput
-              className="flex-1 ml-2 text-gray-900"
-              placeholder="Search by athlete name, test type, or sport..."
+              style={styles.searchInput}
+              placeholder="Search by athlete or test..."
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholderTextColor="#9CA3AF"
@@ -200,179 +254,95 @@ export default function PendingTestsPage() {
           </View>
         </View>
 
-        {/* Stats */}
-        <View className="bg-white mx-4 mt-4 rounded-lg p-4 shadow-sm">
-          <View className="flex-row justify-between items-center">
-            <View>
-              <Text className="text-lg font-bold text-gray-900">Pending Reviews</Text>
-              <Text className="text-sm text-gray-600">Tests awaiting assessment</Text>
-            </View>
-            <View className="bg-yellow-100 px-4 py-2 rounded-full">
-              <Text className="text-yellow-800 font-bold text-xl">{pendingAttempts.length}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Test Attempts List */}
-        <ScrollView className="flex-1 px-4 mt-4">
-          {filteredAttempts.length === 0 ? (
-            <View className="bg-white rounded-lg p-8 items-center mt-8">
-              <Ionicons name="checkmark-circle-outline" size={48} color="#10B981" />
-              <Text className="text-gray-600 mt-2 text-center">
-                {pendingAttempts.length === 0 
-                  ? "No pending tests to review" 
-                  : "No tests match your search"}
-              </Text>
-            </View>
-          ) : (
-            filteredAttempts.map((attempt) => (
-              <View key={attempt._id} className="bg-white rounded-lg p-4 mb-3 shadow-sm">
-                {/* Athlete Info */}
-                <View className="flex-row justify-between items-start mb-3">
-                  <View className="flex-1">
-                    <Text className="text-lg font-bold text-gray-900">{attempt.athlete.name}</Text>
-                    <Text className="text-sm text-gray-600">{attempt.athlete.sport} • {attempt.athlete.age} years</Text>
-                    <Text className="text-sm text-gray-600">{attempt.athlete.city}</Text>
-                  </View>
-                  <View className="items-end">
-                    <View className="bg-yellow-100 px-2 py-1 rounded-full">
-                      <Text className="text-yellow-800 text-xs font-medium">Pending</Text>
-                    </View>
-                  </View>
+        <ScrollView>
+          {filteredAttempts.map((attempt) => (
+            <TouchableOpacity 
+              key={attempt._id} 
+              
+              style={styles.card}
+            >
+              <View style={styles.cardHeader}>
+                <View style={{flex: 1}}>
+                  <Text style={styles.athleteName}>{attempt.athlete.name}</Text>
+                  <Text style={styles.athleteInfo}>{attempt.athlete.sport} • {attempt.athlete.age} years</Text>
                 </View>
-
-                {/* Test Info */}
-                <View className="bg-gray-50 rounded-lg p-3 mb-3">
-                  <View className="flex-row justify-between items-start">
-                    <View className="flex-1">
-                      <Text className="font-semibold text-gray-900">{attempt.testType}</Text>
-                      <Text className="text-sm text-gray-600">
-                        Submitted: {new Date(attempt.createdAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Action Buttons */}
-                <View className="flex-row gap-3">
-                  <TouchableOpacity
-                    onPress={() => openVideoModal(attempt)}
-                    className="flex-1 bg-blue-500 rounded-lg py-3 flex-row items-center justify-center"
-                  >
-                    <Ionicons name="play" size={20} color="white" />
-                    <Text className="text-white font-semibold ml-2">Watch Video</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    onPress={() => openAssessmentModal(attempt)}
-                    className="flex-1 bg-purple-500 rounded-lg py-3 flex-row items-center justify-center"
-                  >
-                    <Ionicons name="create" size={20} color="white" />
-                    <Text className="text-white font-semibold ml-2">Assess</Text>
-                  </TouchableOpacity>
+                <View style={attempt.status === 'done' ? styles.statusBadgeGreen : styles.statusBadgeYellow}>
+                  <Text style={attempt.status === 'done' ? styles.statusTextGreen : styles.statusTextYellow}>
+                    {attempt.status === 'done' ? 'Ready to Assess' : 'Processing'}
+                  </Text>
                 </View>
               </View>
-            ))
-          )}
+              <View style={styles.testInfoContainer}>
+                <Text style={styles.testType}>{attempt.testType}</Text>
+                <Text style={styles.submittedDate}>
+                  Submitted: {new Date(attempt.createdAt).toLocaleDateString()}
+                </Text>
+              </View>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); openVideoModal(attempt); }}
+                  style={styles.button}
+                >
+                  <Ionicons name="play" size={18} color="white" />
+                  <Text style={styles.buttonText}>Watch Video</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); openAssessmentModal(attempt); }}
+                  disabled={attempt.status !== 'done'}
+                  style={[styles.button, styles.assessButton, attempt.status !== 'done' && { backgroundColor: '#9CA3AF' }]}
+                >
+                  <Ionicons name="create" size={18} color="white" />
+                  <Text style={styles.buttonText}>Assess</Text>
+                </TouchableOpacity>
+              </View>
+           </TouchableOpacity>
+          ))}
         </ScrollView>
 
-        {/* Video Modal */}
-        <Modal
-          visible={showVideoModal}
-          animationType="slide"
-          onRequestClose={() => setShowVideoModal(false)}
-        >
-          <View className="flex-1 bg-black">
-            <View className="flex-row justify-between items-center p-4 bg-black">
-              <TouchableOpacity
-                onPress={() => setShowVideoModal(false)}
-                className="bg-gray-700 rounded-full p-2"
-              >
-                <Ionicons name="close" size={24} color="white" />
-              </TouchableOpacity>
-              <Text className="text-white font-semibold">
-                {selectedAttempt?.athlete.name} - {selectedAttempt?.testType}
-              </Text>
-              <View className="w-10" />
+        <Modal visible={showVideoModal} animationType="slide" onRequestClose={() => setShowVideoModal(false)}>
+            <View style={{flex: 1, backgroundColor: 'black', justifyContent: 'center'}}>
+                <TouchableOpacity onPress={() => setShowVideoModal(false)} style={styles.closeButton}>
+                    <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
+                {selectedAttempt?.videoUrl && <Video source={{ uri: selectedAttempt.videoUrl }} style={{ flex: 1 }} useNativeControls resizeMode={ResizeMode.CONTAIN} />}
             </View>
-            
-            {selectedAttempt?.videoUrl && (
-              <Video
-                source={{ uri: selectedAttempt.videoUrl }}
-                style={{ flex: 1, width: '100%' }}
-                useNativeControls
-              />
-            )}
-          </View>
         </Modal>
 
-        {/* Assessment Modal */}
-        <Modal
-          visible={showAssessmentModal}
-          animationType="slide"
-          onRequestClose={() => setShowAssessmentModal(false)}
-        >
-          <View className="flex-1 bg-white">
-            <View className="flex-row justify-between items-center p-4 border-b border-gray-200">
-              <TouchableOpacity
-                onPress={() => setShowAssessmentModal(false)}
-                className="bg-gray-100 rounded-full p-2"
-              >
+        <Modal visible={showAssessmentModal} animationType="slide" onRequestClose={() => setShowAssessmentModal(false)}>
+          <View style={{flex: 1, backgroundColor: '#f8f9fa'}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Assessment - {selectedAttempt?.athlete.name}</Text>
+              <TouchableOpacity onPress={() => setShowAssessmentModal(false)} style={styles.modalCloseButton}>
                 <Ionicons name="close" size={24} color="#374151" />
               </TouchableOpacity>
-              <Text className="text-lg font-semibold text-gray-900">
-                Assessment - {selectedAttempt?.athlete.name}
-              </Text>
-              <View className="w-10" />
             </View>
-
-            <ScrollView className="flex-1 p-4">
-              <Text className="text-xl font-bold text-gray-900 mb-2">
-                {selectedAttempt?.testType}
-              </Text>
-              
-              <Text className="text-gray-600 mb-6">
-                Review the athlete's performance and provide your assessment.
-              </Text>
-
-              {/* Score Input */}
-              <View className="mb-6">
-                <Text className="text-lg font-semibold text-gray-900 mb-2">Score (0-100)</Text>
-                <TextInput
-                  className="border border-gray-300 rounded-lg px-4 py-3 text-gray-900"
-                  placeholder="Enter score (0-100)"
-                  value={assessmentScore}
-                  onChangeText={setAssessmentScore}
-                  keyboardType="numeric"
-                  maxLength={3}
-                />
-              </View>
-
-              {/* Remarks Input */}
-              <View className="mb-6">
-                <Text className="text-lg font-semibold text-gray-900 mb-2">Remarks</Text>
-                <TextInput
-                  className="border border-gray-300 rounded-lg px-4 py-3 text-gray-900 h-32"
-                  placeholder="Provide detailed feedback on the athlete's performance..."
-                  value={assessmentRemarks}
-                  onChangeText={setAssessmentRemarks}
-                  multiline
-                  textAlignVertical="top"
-                />
-              </View>
-
-              {/* Submit Button */}
-              <TouchableOpacity
-                onPress={submitAssessment}
-                disabled={submittingAssessment}
-                className="bg-purple-600 rounded-lg py-4 items-center"
-              >
-                {submittingAssessment ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-white font-semibold text-lg">Submit Assessment</Text>
-                )}
-              </TouchableOpacity>
+            <ScrollView contentContainerStyle={{padding: 20}}>
+                <>
+                  <Text style={styles.detailsTestType}>{selectedAttempt?.testType}</Text>
+                  {selectedAttempt?.annotatedVideoUrl && (
+                    <View style={{marginBottom: 20}}>
+                       <Text style={styles.detailsSectionTitle}>Annotated Video</Text>
+                       <Video source={{ uri: selectedAttempt.annotatedVideoUrl }} style={styles.detailsVideo} useNativeControls resizeMode={ResizeMode.CONTAIN} />
+                    </View>
+                  )}
+                  {selectedAttempt?.supabaseResult && (
+                    <View style={{marginBottom: 20}}>
+                      <Text style={styles.detailsSectionTitle}>ML Analysis</Text>
+                      <AnalysisReport resultString={selectedAttempt.supabaseResult} testType={selectedAttempt.testType} />
+                    </View>
+                  )}
+                  <View style={{marginBottom: 20}}>
+                    <Text style={styles.detailsSectionTitle}>Score (0-100)</Text>
+                    <TextInput style={styles.input} placeholder="Enter score" value={assessmentScore} onChangeText={setAssessmentScore} keyboardType="numeric" maxLength={3} />
+                  </View>
+                  <View style={{marginBottom: 20}}>
+                    <Text style={styles.detailsSectionTitle}>Remarks</Text>
+                    <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Provide detailed feedback..." value={assessmentRemarks} onChangeText={setAssessmentRemarks} multiline />
+                  </View>
+                  <TouchableOpacity onPress={submitAssessment} disabled={submittingAssessment} style={styles.submitButton}>
+                    {submittingAssessment ? <ActivityIndicator color="white" /> : <Text style={styles.submitButtonText}>Submit Assessment</Text>}
+                  </TouchableOpacity>
+                </>
             </ScrollView>
           </View>
         </Modal>
@@ -380,3 +350,51 @@ export default function PendingTestsPage() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#f8f9fa' },
+    centeredContainer: { flex: 1, backgroundColor: '#f8f9fa', justifyContent: 'center', alignItems: 'center' },
+    searchContainer: { backgroundColor: 'white', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+    searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 8, paddingHorizontal: 12 },
+    searchInput: { flex: 1, height: 40, marginLeft: 8, fontSize: 16 },
+    card: { backgroundColor: 'white', borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12, elevation: 2 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+    athleteName: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+    athleteInfo: { fontSize: 14, color: '#6b7280' },
+    statusBadgeYellow: { backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+    statusTextYellow: { color: '#92400e', fontWeight: '500', fontSize: 12 },
+    statusBadgeGreen: { backgroundColor: '#d1fae5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+    statusTextGreen: { color: '#065f46', fontWeight: '500', fontSize: 12 },
+    testInfoContainer: { backgroundColor: '#f9fafb', borderRadius: 8, padding: 12, marginBottom: 12 },
+    testType: { fontWeight: '600', color: '#111827' },
+    submittedDate: { fontSize: 12, color: '#6b7280' },
+    buttonRow: { flexDirection: 'row', gap: 12 },
+    button: { flex: 1, backgroundColor: '#3b82f6', borderRadius: 8, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    assessButton: { backgroundColor: '#8b5cf6' },
+    buttonText: { color: 'white', fontWeight: '600', marginLeft: 8 },
+    closeButton: { position: 'absolute', top: 50, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 1 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+    modalTitle: { fontSize: 18, fontWeight: '600' },
+    modalCloseButton: { padding: 8 },
+    detailsTestType: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
+    detailsSectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
+    detailsVideo: { width: '100%', height: 220, backgroundColor: '#000', borderRadius: 12 },
+    input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: 'white' },
+    submitButton: { backgroundColor: '#7C3AED', borderRadius: 8, paddingVertical: 16, alignItems: 'center' },
+    submitButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
+    analysisContainer: { width: '100%' },
+    metricCard: { backgroundColor: '#fff', borderRadius: 12, padding: 15, width: '100%', alignItems: 'center', marginBottom: 15, elevation: 2, borderWidth: 1, borderColor: '#e5e7eb'},
+    metricLabel: { fontSize: 14, color: '#6c757d', marginTop: 5 },
+    metricValue: { fontSize: 24, fontWeight: 'bold', marginTop: 2 },
+    metricUnit: { fontSize: 14, fontWeight: 'normal', color: '#6c757d' },
+    errorText: { fontSize: 18, color: "red", fontWeight: "600" },
+    emptyStateContainer: { alignItems: 'center', marginTop: 32 },
+    emptyStateText: { color: '#6b7280', marginTop: 8 },
+     cheatCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 15, marginTop: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  cheatCardGreen: { backgroundColor: '#d1fae5', borderWidth: 1, borderColor: '#a7f3d0' },
+  cheatCardRed: { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#fecaca' },
+  cheatCardWarning: { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde68a' },
+  cheatTitle: { fontSize: 16, fontWeight: 'bold', color: '#1f2937' },
+  cheatDetails: { fontSize: 14, color: '#4b5563', marginTop: 2 },
+  cheatConfidence: { fontSize: 12, color: '#6b7280', marginTop: 4, fontStyle: 'italic' },
+});

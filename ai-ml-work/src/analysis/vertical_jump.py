@@ -20,7 +20,7 @@ def analyze_performance(max_jump_height):
         
     return pass_fail_status, assessed_level
 
-def analyze(input_path: str, output_path: str, ):
+def analyze(input_path: str, output_path: str):
     print("--- Running Vertical Jump Analysis ---")
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
