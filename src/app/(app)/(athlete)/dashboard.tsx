@@ -59,6 +59,24 @@ export default function AthleteDashboard() {
           </View>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          className="bg-white rounded-2xl shadow-lg overflow-hidden h-32"
+          onPress={() => router.push('/(app)/(athlete)/(tabs)/leaderboard')}
+        >
+          <View className="flex-row h-full">
+            <View className="w-2/3 p-4 justify-center">
+              <View className="bg-orange-100 w-10 h-10 items-center justify-center mb-2 rounded-full">
+                <Ionicons name="trophy" size={24} color="#F59E0B" />
+              </View>
+              <Text className="text-xl font-bold text-gray-800">Elite Leaderboard</Text>
+              <Text className="text-sm text-gray-600">See top performers and compete</Text>
+            </View>
+            <View className="w-1/3 bg-orange-500 justify-center items-center">
+              <Ionicons name="arrow-forward" size={24} color="white" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
         
       </ScrollView>
       
